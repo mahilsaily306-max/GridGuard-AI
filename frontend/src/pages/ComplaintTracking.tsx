@@ -1,0 +1,14 @@
+import { useQuery } from '@tanstack/react-query'
+import { CheckCircle2, Circle, Search } from 'lucide-react'
+import { useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+import { api, formatDate, humanize } from '../api'
+import { Badge, Button, Card, ErrorState, Input, Skeleton } from '../components/ui'
+import type { Complaint } from '../types'
+
+export function ComplaintTrackingPage() {
+  const params = useParams(); const navigate = useNavigate(); const [reference, setReference] = useState(params.reference ?? '')
+  const query = useQuery({ queryKey: ['complaint', params.reference], queryFn: () => api<Complaint>(`/api/complaints/${params.reference}`), enabled: Boolean(params.reference), refetchInterval: 10000 })
+  if (!params.reference) return <div className="grid min-h-screen place-items-center bg-slate-100 p-4"><Card className="w-full max-w-md p-6"><h1 className="text-xl font-bold">Track Complaint</h1><p className="mt-1 text-sm text-slate-500">Enter the private reference returned after submitting a simulated complaint.</p><Input className="mt-5" value={reference} onChange={event => setReference(event.target.value.toUpperCase())} placeholder="GG-XXXXXXXX"/><Button className="mt-3 w-full" onClick={() => navigate(`/track/${reference}`)} disabled={!reference}><Search className="h-4 w-4"/>Track</Button></Card></div>
+  return <div className="min-h-screen bg-slate-100 p-4 lg:p-10"><div className="mx-auto max-w-2xl">{query.isError ? <ErrorState error={query.error}/> : !query.data ? <Skeleton className="h-[600px]"/> : <Card><div className="bg-navy-950 p-6 text-white"><Badge tone="blue">Synthetic complaint workflow</Badge><h1 className="mt-3 text-2xl font-bold">{query.data.reference}</h1><p className="mt-1 text-sm text-slate-300">{query.data.village_name} · {humanize(query.data.category)} · received {formatDate(query.data.created_at)}</p></div><div className="p-6"><div className="space-y-0">{query.data.tracking_steps.map((step, index) => <div key={step.key} className="relative flex gap-4 pb-8 last:pb-0">{index < query.data!.tracking_steps.length - 1 && <div className={`absolute left-[11px] top-6 h-full w-0.5 ${step.complete ? 'bg-blue-500' : 'bg-slate-200'}`}/>}<div className="relative z-10 bg-white">{step.complete ? <CheckCircle2 className="h-6 w-6 text-blue-600"/> : <Circle className="h-6 w-6 text-slate-300"/>}</div><div><p className={`font-semibold ${step.complete ? 'text-slate-900' : 'text-slate-400'}`}>{step.label}</p>{step.complete && <p className="text-xs text-slate-500">Recorded in the persistent demo workflow</p>}</div></div>)}</div><div className="mt-8 rounded-xl bg-blue-50 p-4 text-sm text-blue-800">Caller identity is protected. Restoration timing is illustrative until qualified field verification.</div></div></Card>}</div></div>
+}

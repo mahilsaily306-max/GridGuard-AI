@@ -1,0 +1,13 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { AlertTriangle, CheckCircle2 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { api, formatDate, humanize } from '../api'
+import { Badge, Button, Card, CardHeader, ErrorState, Skeleton } from '../components/ui'
+import type { AlertRecord } from '../types'
+
+export function AlertsPage() {
+  const client = useQueryClient(); const navigate = useNavigate()
+  const query = useQuery({ queryKey: ['alerts', 'all'], queryFn: () => api<AlertRecord[]>('/api/alerts?limit=500'), refetchInterval: 12000 })
+  const acknowledge = useMutation({ mutationFn: (id: number) => api(`/api/alerts/${id}`, { method: 'PATCH', body: JSON.stringify({ status: 'acknowledged', acknowledged_by: 'dashboard-user' }) }), onSuccess: () => client.invalidateQueries({ queryKey: ['alerts'] }) })
+  return <div className="space-y-4 p-4 lg:p-6"><div><p className="text-xs font-bold uppercase tracking-[.2em] text-blue-600">Exception management</p><h1 className="text-2xl font-bold">Predictive Alerts</h1><p className="text-sm text-slate-500">Persistent, deduplicated prototype rules and model alerts.</p></div><Card><CardHeader title="Alert queue" subtitle={`${query.data?.filter(item => item.status === 'open').length ?? 0} open alerts`}/>{query.isError ? <div className="p-4"><ErrorState error={query.error}/></div> : !query.data ? <Skeleton className="m-4 h-96"/> : <div className="divide-y divide-slate-100">{query.data.map(alert => <div key={alert.id} className="flex flex-wrap items-center gap-4 p-4"><div className={`grid h-10 w-10 place-items-center rounded-xl ${alert.severity === 'critical' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-600'}`}><AlertTriangle className="h-5 w-5"/></div><button className="min-w-0 flex-1 text-left" onClick={() => alert.transformer_id && navigate(`/transformers/${alert.transformer_id}`)}><div className="flex flex-wrap items-center gap-2"><p className="font-semibold">{humanize(alert.category)}</p><Badge tone={alert.severity === 'critical' ? 'red' : 'amber'}>{alert.severity}</Badge><Badge tone={alert.status === 'open' ? 'blue' : 'green'}>{alert.status}</Badge></div><p className="mt-1 text-sm text-slate-600">{alert.explanation}</p><p className="mt-1 text-xs text-slate-400">{alert.transformer_id ?? alert.feeder_id} · {formatDate(alert.created_at)} · {alert.occurrence_count} occurrence(s)</p></button>{alert.status === 'open' && <Button variant="secondary" onClick={() => acknowledge.mutate(alert.id)}><CheckCircle2 className="h-4 w-4"/>Acknowledge</Button>}</div>)}</div>}</Card></div>
+}

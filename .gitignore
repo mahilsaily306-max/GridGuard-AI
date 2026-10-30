@@ -1,0 +1,59 @@
+# Claude Code generated files
+.claude/
+
+# Python caches
+**/__pycache__/
+*.pyc
+
+# Python virtual environments
+.backend/.venv/
+.venv/
+
+# pytest cache
+.pytest_cache/
+
+# Node modules and build output
+frontend/node_modules/
+frontend/dist/
+*.tsbuildinfo
+
+# Frontend Vite configs (user-editable, rebuild on change)
+frontend/vite.config.js
+frontend/vite.config.d.ts
+
+# Backend generated/runtime
+backend/data/
+backend/backups/
+backend/uploads/
+backend/artifacts/
+*.db
+*.sqlite
+*.sqlite3
+*.joblib
+
+# Logs
+*.log
+
+# Environment files
+.env
+.env.*
+
+# IDE and OS files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~ node_modules/
+dist/
+build/
+.output/
+
+# Python specific
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+env/
+ENV/
