@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.database import database
+
 
 def login(client, username: str, password: str) -> dict:
     response = client.post("/api/auth/login", json={"username": username, "password": password})
@@ -117,7 +119,9 @@ def test_complete_complaint_dispatch_repair_verification_flow(client):
         json={"status": "closed", "notes": "Operator closed verified incident"},
         headers=auth(operator["access_token"]),
     ).status_code == 200
-    assert len(client.get("/api/knowledge-base", headers=auth(supervisor["access_token"])).json()) == 1
+    knowledge = client.get("/api/knowledge-base", headers=auth(supervisor["access_token"])).json()
+    assert len([item for item in knowledge if item["entry_type"] == "verified_repair"]) == 1
+    assert len([item for item in knowledge if item["entry_type"] == "reference_guidance"]) == 20
     assert client.get(
         f"/api/reports/incidents/{complaint_body['incident_id']}/pdf",
         headers=auth(operator["access_token"]),
@@ -131,7 +135,7 @@ def test_role_permissions_and_audit(client):
     admin = login(client, "admin", "Admin@123")
     logs = client.get("/api/audit-logs", headers=auth(admin["access_token"]))
     assert logs.status_code == 200
-    assert any(item["action"] == "auth.login" for item in logs.json())
+    assert any(item["action"] == "auth.login" for item in logs.json()["items"])
 
 
 def test_replay_fixture_is_isolated(client):
@@ -142,3 +146,72 @@ def test_replay_fixture_is_isolated(client):
     assert len(body["presentation_telemetry"]) == 19
     assert body["presentation_telemetry"][-1]["day_offset"] == 1
     assert body["operational_data_modified"] is False
+
+
+def test_complaint_list_requires_auth(client):
+    response = client.get("/api/complaints")
+    assert response.status_code == 401
+
+
+def test_complaint_list_search_and_status_filter(client):
+    operator = login(client, "operator", "Operator@123")
+    headers = auth(operator["access_token"])
+
+    c1 = client.post(
+        "/api/complaints",
+        json={
+            "village_name": "Demo Village A",
+            "transformer_id": "T-101",
+            "category": "power_outage",
+            "severity": "high",
+            "landmark": "Community centre",
+            "duration_minutes": 25,
+            "hazard_flags": [],
+            "language": "pa",
+            "details": "Outage report A",
+            "caller_id": "caller-a",
+        },
+        headers=headers,
+    )
+    assert c1.status_code == 201
+    ref_a = c1.json()["reference"]
+
+    c2 = client.post(
+        "/api/complaints",
+        json={
+            "village_name": "Demo Village B",
+            "transformer_id": "T-102",
+            "category": "sparking_fire",
+            "severity": "emergency",
+            "landmark": "Near school",
+            "duration_minutes": 10,
+            "hazard_flags": ["visible_sparking"],
+            "language": "en",
+            "details": "Sparking report B",
+            "caller_id": "caller-b",
+        },
+        headers=headers,
+    )
+    assert c2.status_code == 201
+    ref_b = c2.json()["reference"]
+
+    # Search by village name.
+    found = client.get("/api/complaints?search=Demo%20Village%20B", headers=headers).json()
+    assert len(found) == 1
+    assert found[0]["reference"] == ref_b
+
+    # Search by reference prefix.
+    found = client.get(f"/api/complaints?search={ref_a[:6]}", headers=headers).json()
+    assert any(item["reference"] == ref_a for item in found)
+
+    # Search with no match returns an empty list.
+    found = client.get("/api/complaints?search=NoSuchVillage", headers=headers).json()
+    assert found == []
+
+    # Status filter: move one complaint to assigned and filter by status.
+    with database() as conn:
+        conn.execute("UPDATE complaints SET status='assigned' WHERE reference=?", (ref_a,))
+    assigned = client.get("/api/complaints?status=assigned", headers=headers).json()
+    assert any(item["reference"] == ref_a for item in assigned)
+    received = client.get("/api/complaints?status=received", headers=headers).json()
+    assert any(item["reference"] == ref_b for item in received)

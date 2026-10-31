@@ -79,15 +79,16 @@ export interface Health {
 
 export interface MapFeature {
   type: 'Feature'
-  geometry: { type: 'Point' | 'LineString'; coordinates: number[] | number[][] }
+  geometry: { type: 'Point' | 'Polygon'; coordinates: number[] | number[][][] }
   properties: Record<string, string | number | boolean | null>
 }
 
 export interface NetworkMap {
   transformers: { type: 'FeatureCollection'; features: MapFeature[] }
-  feeder_lines: { type: 'FeatureCollection'; features: MapFeature[] }
+  feeder_areas: { type: 'FeatureCollection'; features: MapFeature[] }
   geometry_note: string
   data_source: string
+  bounds?: [[number, number], [number, number]]
 }
 
 export interface AlertRecord {

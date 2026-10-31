@@ -153,6 +153,38 @@ def list_alerts(limit: int = 100, status: str | None = None) -> list[dict]:
         return result
 
 
+def _feeder_polygon(points: list[dict]) -> list[list[float]]:
+    """Build a simple service-area polygon around a feeder's transformer points.
+
+    Returns a GeoJSON linear ring (lon/lat pairs, closed) that encloses the
+    cluster with a small buffer so the polygon is visible even when points
+    are close together. This is a schematic service boundary, not a surveyed
+    parcel.
+    """
+    lons = [float(p["longitude"]) for p in points]
+    lats = [float(p["latitude"]) for p in points]
+    pad_lat = max((max(lats) - min(lats)) * 0.25, 0.003)
+    pad_lon = max((max(lons) - min(lons)) * 0.25, 0.005)
+    min_lon, max_lon = min(lons) - pad_lon, max(lons) + pad_lon
+    min_lat, max_lat = min(lats) - pad_lat, max(lats) + pad_lat
+    ring = [
+        [min_lon, min_lat],
+        [max_lon, min_lat],
+        [max_lon, max_lat],
+        [min_lon, max_lat],
+        [min_lon, min_lat],
+    ]
+    return ring
+
+
+def _overall_bounds(points: list[dict]) -> list[list[float]] | None:
+    if not points:
+        return None
+    lons = [float(p["longitude"]) for p in points]
+    lats = [float(p["latitude"]) for p in points]
+    return [[min(lons), min(lats)], [max(lons), max(lats)]]
+
+
 def network_map(feeder_id: str | None, risk: str | None, outage_only: bool) -> dict:
     with database() as conn:
         assets = _latest_asset_rows(conn)
@@ -184,21 +216,22 @@ def network_map(feeder_id: str | None, risk: str | None, outage_only: bool) -> d
         }
         features.append({"type": "Feature", "geometry": {"type": "Point", "coordinates": [item["longitude"], item["latitude"]]}, "properties": properties})
         filtered.append(item)
-    line_features = []
+    area_features = []
     feeder_ids = sorted({item["feeder_id"] for item in filtered})
     for fid in feeder_ids:
         points = sorted((item for item in filtered if item["feeder_id"] == fid), key=lambda x: x["id"])
-        if len(points) >= 2:
-            line_features.append({
+        if len(points) >= 1:
+            area_features.append({
                 "type": "Feature",
-                "geometry": {"type": "LineString", "coordinates": [[p["longitude"], p["latitude"]] for p in points]},
-                "properties": {"feeder_id": fid, "topology": "simulated_ordered_connection", "verified_real_world": False},
+                "geometry": {"type": "Polygon", "coordinates": [_feeder_polygon(points)]},
+                "properties": {"feeder_id": fid, "topology": "simulated_service_area", "verified_real_world": False, "transformer_count": len(points)},
             })
     return {
         "transformers": {"type": "FeatureCollection", "features": features},
-        "feeder_lines": {"type": "FeatureCollection", "features": line_features},
-        "geometry_note": "Fictional feeder geometry connects seeded assets in explicit transformer order; it is not a verified real network.",
+        "feeder_areas": {"type": "FeatureCollection", "features": area_features},
+        "geometry_note": "Schematic feeder service-area polygons enclose each cluster of seeded transformers; they are not surveyed parcel boundaries.",
         "data_source": "synthetic",
+        "bounds": _overall_bounds(filtered),
     }
 
 

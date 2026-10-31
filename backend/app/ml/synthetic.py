@@ -38,7 +38,7 @@ def network_assets(seed: int = 20261030) -> list[NetworkAsset]:
     rng = np.random.default_rng(seed)
     capacities = [100.0, 160.0, 200.0, 250.0]
     assets: list[NetworkAsset] = []
-    base_lat, base_lon = 20.5937, 78.9629
+    base_lat, base_lon = 30.9000, 75.8500
     for index in range(24):
         feeder_number = index // 4 + 1
         within = index % 4
@@ -47,8 +47,8 @@ def network_assets(seed: int = 20261030) -> list[NetworkAsset]:
                 transformer_id=f"T-{101 + index}",
                 feeder_id=f"F-{feeder_number:02d}",
                 village_name=f"Demo Village {chr(65 + index)}",
-                latitude=round(base_lat + (feeder_number - 3.5) * 0.035 + within * 0.008, 6),
-                longitude=round(base_lon + (feeder_number - 3.5) * 0.04 - within * 0.006, 6),
+                latitude=round(base_lat + (feeder_number - 3.5) * 0.025 + within * 0.006, 6),
+                longitude=round(base_lon + (feeder_number - 3.5) * 0.03 - within * 0.004, 6),
                 capacity_kva=capacities[index % len(capacities)],
                 age_years=int(rng.integers(3, 29)),
             )

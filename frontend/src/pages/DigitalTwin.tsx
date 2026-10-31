@@ -152,7 +152,7 @@ export function DigitalTwinPage() {
         {mode === 'geographic' && (
           <div className="h-[60vh] lg:h-[70vh]">
             {map.isError ? <ErrorState error={map.error} /> : (
-              <NetworkMapView data={map.data ?? { transformers: { type: 'FeatureCollection', features: [] }, feeder_lines: { type: 'FeatureCollection', features: [] }, geometry_note: '', data_source: 'synthetic' }} height="100%" onSelect={handleSelect} />
+              <NetworkMapView data={map.data ?? { transformers: { type: 'FeatureCollection', features: [] }, feeder_areas: { type: 'FeatureCollection', features: [] }, geometry_note: '', data_source: 'synthetic' }} height="100%" onSelect={handleSelect} />
             )}
           </div>
         )}

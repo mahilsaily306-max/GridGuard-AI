@@ -8,8 +8,10 @@ from typing import Any
 
 from fastapi import HTTPException
 
+from app.audit_seed import seed_simulated_audit_events
 from app.auth import audit
 from app.database import database, utc_now
+from app.knowledge import seed_reference_knowledge
 from app.services import create_outage_report, features_for_transformer, predict_transformer, update_incident
 
 
@@ -102,6 +104,8 @@ def seed_operations() -> None:
                 VALUES('demo_incident',?,?,?,?,?,?)""",
                 (sequence, event_time, event_type, title, description, json.dumps({"simulated": True})),
             )
+    seed_reference_knowledge()
+    seed_simulated_audit_events()
 
 
 def _public_user(row: Any) -> dict | None:

@@ -25,9 +25,9 @@ def test_network_map_is_geojson_with_documented_simulated_geometry(client):
     body = response.json()
     assert body["transformers"]["type"] == "FeatureCollection"
     assert len(body["transformers"]["features"]) == 4
-    assert len(body["feeder_lines"]["features"]) == 1
-    assert body["feeder_lines"]["features"][0]["geometry"]["type"] == "LineString"
-    assert body["feeder_lines"]["features"][0]["properties"]["verified_real_world"] is False
+    assert len(body["feeder_areas"]["features"]) == 1
+    assert body["feeder_areas"]["features"][0]["geometry"]["type"] == "Polygon"
+    assert body["feeder_areas"]["features"][0]["properties"]["verified_real_world"] is False
 
 
 def test_transformer_intelligence_and_health_index(client):

@@ -327,6 +327,20 @@ CREATE TABLE IF NOT EXISTS verified_faults (
     supervisor_decision_id INTEGER NOT NULL REFERENCES supervisor_decisions(id),
     verified_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS knowledge_entries (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    category TEXT NOT NULL,
+    simple_explanation TEXT NOT NULL,
+    warning_signs_json TEXT NOT NULL DEFAULT '[]',
+    possible_causes_json TEXT NOT NULL DEFAULT '[]',
+    relevant_measurements_json TEXT NOT NULL DEFAULT '[]',
+    safe_inspection_considerations_json TEXT NOT NULL DEFAULT '[]',
+    preventive_recommendations_json TEXT NOT NULL DEFAULT '[]',
+    source_classification TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_knowledge_category ON knowledge_entries(category,title);
 CREATE TABLE IF NOT EXISTS notifications (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL REFERENCES users(id),
@@ -341,16 +355,25 @@ CREATE TABLE IF NOT EXISTS notifications (
 CREATE INDEX IF NOT EXISTS ix_notifications_user ON notifications(user_id,read_at,created_at DESC);
 CREATE TABLE IF NOT EXISTS audit_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id TEXT UNIQUE,
     actor_user_id INTEGER REFERENCES users(id),
     actor_label TEXT NOT NULL,
+    actor_role TEXT,
     action TEXT NOT NULL,
+    module TEXT,
     entity_type TEXT NOT NULL,
     entity_id TEXT NOT NULL,
+    resource TEXT,
+    result TEXT NOT NULL DEFAULT 'SUCCESS',
+    origin TEXT NOT NULL DEFAULT 'REAL' CHECK(origin IN ('REAL','SIMULATED')),
     before_json TEXT,
     after_json TEXT,
+    details_json TEXT,
+    seed_key TEXT UNIQUE,
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS ix_audit_entity ON audit_logs(entity_type,entity_id,created_at DESC);
+CREATE INDEX IF NOT EXISTS ix_audit_filters ON audit_logs(origin,module,actor_role,created_at DESC);
 CREATE TABLE IF NOT EXISTS simulation_scenarios (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
@@ -444,10 +467,29 @@ def initialize_database() -> None:
                 "longitude": "REAL",
                 "report_status": "TEXT NOT NULL DEFAULT 'received'",
             },
+            "audit_logs": {
+                "event_id": "TEXT",
+                "actor_role": "TEXT",
+                "module": "TEXT",
+                "resource": "TEXT",
+                "result": "TEXT NOT NULL DEFAULT 'SUCCESS'",
+                "origin": "TEXT NOT NULL DEFAULT 'REAL'",
+                "details_json": "TEXT",
+                "seed_key": "TEXT",
+            },
         }
         for table, additions in columns.items():
             existing = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
             for name, definition in additions.items():
                 if name not in existing:
                     conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_audit_event_id ON audit_logs(event_id)")
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_audit_seed_key ON audit_logs(seed_key)")
+        conn.execute("CREATE INDEX IF NOT EXISTS ix_audit_filters ON audit_logs(origin,module,actor_role,created_at DESC)")
+        conn.execute("UPDATE audit_logs SET event_id='EVT-REAL-' || printf('%06d', id) WHERE event_id IS NULL")
+        conn.execute("UPDATE audit_logs SET actor_role=COALESCE((SELECT role FROM users WHERE users.id=audit_logs.actor_user_id),'public') WHERE actor_role IS NULL")
+        conn.execute("UPDATE audit_logs SET module=replace(entity_type,'_',' ') WHERE module IS NULL")
+        conn.execute("UPDATE audit_logs SET resource=entity_type || ':' || entity_id WHERE resource IS NULL")
+        conn.execute("UPDATE audit_logs SET result='SUCCESS' WHERE result IS NULL")
+        conn.execute("UPDATE audit_logs SET origin='REAL' WHERE origin IS NULL")
 

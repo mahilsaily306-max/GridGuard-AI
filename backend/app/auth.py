@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Callable
@@ -97,19 +98,44 @@ def audit(
     actor: dict | None,
     before: str | None = None,
     after: str | None = None,
+    *,
+    module: str | None = None,
+    resource: str | None = None,
+    result: str = "SUCCESS",
+    details: dict | None = None,
 ) -> None:
+    module_names = {
+        "auth": "Authentication",
+        "complaint": "Complaints",
+        "work_order": "Work Orders",
+        "inspection": "Inspection",
+        "repair": "Work Orders",
+        "evidence": "Evidence",
+        "supervisor": "Supervisor Review",
+        "simulation": "Simulation",
+    }
+    action_family = action.split(".", 1)[0]
+    details_json = json.dumps(details) if details is not None else json.dumps({"before": before, "after": after})
     with database() as conn:
         conn.execute(
-            """INSERT INTO audit_logs(actor_user_id,actor_label,action,entity_type,entity_id,before_json,after_json,created_at)
-            VALUES(?,?,?,?,?,?,?,?)""",
+            """INSERT INTO audit_logs(
+            event_id,actor_user_id,actor_label,actor_role,action,module,entity_type,entity_id,
+            resource,result,origin,before_json,after_json,details_json,created_at
+            ) VALUES(?,?,?,?,?,?,?,?,?,?,'REAL',?,?,?,?)""",
             (
+                f"EVT-REAL-{secrets.token_hex(6).upper()}",
                 actor["id"] if actor else None,
                 actor["username"] if actor else "public",
+                actor["role"] if actor else "public",
                 action,
+                module or module_names.get(action_family, action_family.replace("_", " ").title()),
                 entity_type,
                 str(entity_id),
+                resource or f"{entity_type}:{entity_id}",
+                result.upper(),
                 before,
                 after,
+                details_json,
                 utc_now(),
             ),
         )

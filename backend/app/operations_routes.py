@@ -15,6 +15,7 @@ from reportlab.lib import colors
 from app.auth import authenticate, audit, current_user, require_roles
 from app.config import BACKEND_DIR
 from app.database import database, utc_now
+from app.knowledge import list_knowledge
 from app.operations import (
     complaint_by_reference,
     create_complaint,
@@ -99,14 +100,22 @@ def post_complaint(payload: ComplaintCreate) -> dict:
 @router.get("/complaints", tags=["complaints"])
 def complaints(
     status: str | None = Query(default=None),
+    search: str | None = Query(default=None, max_length=100),
     _: dict = Depends(require_roles("administrator", "operator", "supervisor", "lineman")),
 ) -> list[dict]:
     with database() as conn:
-        query = "SELECT reference FROM complaints"
-        params = []
+        clauses: list[str] = []
+        params: list[object] = []
         if status:
-            query += " WHERE status=?"
+            clauses.append("status=?")
             params.append(status)
+        if search:
+            pattern = f"%{search}%"
+            clauses.append("(reference LIKE ? OR village_name LIKE ?)")
+            params.extend([pattern, pattern])
+        query = "SELECT reference FROM complaints"
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
         query += " ORDER BY created_at DESC"
         references = [row[0] for row in conn.execute(query, params)]
     return [complaint_by_reference(reference) for reference in references]
@@ -279,33 +288,75 @@ def decide(
 @router.get("/knowledge-base", tags=["knowledge base"])
 def knowledge_base(
     query: str | None = Query(default=None, max_length=100),
+    category: str | None = Query(default=None, max_length=100),
     _: dict = Depends(current_user),
 ) -> list[dict]:
-    with database() as conn:
-        if query:
-            pattern = f"%{query}%"
-            rows = conn.execute(
-                """SELECT * FROM verified_faults WHERE fault_category LIKE ? OR verified_root_cause LIKE ? OR repair_action LIKE ?
-                ORDER BY verified_at DESC""",
-                (pattern, pattern, pattern),
-            )
-        else:
-            rows = conn.execute("SELECT * FROM verified_faults ORDER BY verified_at DESC")
-        return [dict(row) for row in rows]
+    return list_knowledge(query, category)
 
 
 @router.get("/audit-logs", tags=["audit"])
 def audit_logs(
+    search: str | None = Query(default=None, max_length=100),
+    date_from: str | None = None,
+    date_to: str | None = None,
+    role: str | None = None,
+    module: str | None = None,
+    origin: str | None = None,
     entity_type: str | None = None,
-    limit: int = Query(default=200, ge=1, le=1000),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=200),
     _: dict = Depends(require_roles("administrator", "supervisor")),
-) -> list[dict]:
+) -> dict:
+    if origin and origin not in {"REAL", "SIMULATED"}:
+        raise HTTPException(status_code=422, detail="Origin must be REAL or SIMULATED")
+    clauses: list[str] = []
+    params: list[object] = []
+    filters = {
+        "actor_role": role,
+        "module": module,
+        "origin": origin,
+        "entity_type": entity_type,
+    }
+    for column, value in filters.items():
+        if value:
+            clauses.append(f"{column}=?")
+            params.append(value)
+    if date_from:
+        clauses.append("created_at>=?")
+        params.append(date_from)
+    if date_to:
+        clauses.append("created_at<=?")
+        params.append(date_to)
+    if search:
+        pattern = f"%{search}%"
+        clauses.append("(event_id LIKE ? OR actor_label LIKE ? OR action LIKE ? OR module LIKE ? OR resource LIKE ? OR details_json LIKE ?)")
+        params.extend([pattern] * 6)
+    where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
     with database() as conn:
-        if entity_type:
-            rows = conn.execute("SELECT * FROM audit_logs WHERE entity_type=? ORDER BY created_at DESC LIMIT ?", (entity_type, limit))
-        else:
-            rows = conn.execute("SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT ?", (limit,))
-        return [dict(row) for row in rows]
+        total = conn.execute(f"SELECT COUNT(*) FROM audit_logs{where}", params).fetchone()[0]
+        rows = conn.execute(
+            f"SELECT * FROM audit_logs{where} ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?",
+            [*params, page_size, (page - 1) * page_size],
+        )
+        items = []
+        for row in rows:
+            item = dict(row)
+            try:
+                details = json.loads(item["details_json"]) if item.get("details_json") else {}
+            except (TypeError, json.JSONDecodeError):
+                details = {"raw": item.get("details_json")}
+            item.update({
+                "timestamp": item["created_at"],
+                "actor": item["actor_label"],
+                "actor_role": item.get("actor_role") or "public",
+                "module": item.get("module") or item["entity_type"].replace("_", " ").title(),
+                "resource": item.get("resource") or f"{item['entity_type']}:{item['entity_id']}",
+                "result": item.get("result") or "SUCCESS",
+                "origin": item.get("origin") or "REAL",
+                "details": details,
+            })
+            items.append(item)
+    return {"items": items, "total": total, "page": page, "page_size": page_size}
 
 
 @router.get("/replay/{incident_id}", tags=["replay"])

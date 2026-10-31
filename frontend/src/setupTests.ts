@@ -1,3 +1,5 @@
+import '@testing-library/jest-dom/vitest'
+
 // Test setup: jsdom environment is configured in vitest.config.ts.
 // getBy* queries from @testing-library/react throw on missing elements,
 // so no extra DOM matchers are needed.

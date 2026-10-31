@@ -200,3 +200,18 @@ class ModelMetadata(Base):
     metrics_json: Mapped[str] = mapped_column(Text)
     data_source: Mapped[str] = mapped_column(String, default="synthetic")
 
+
+class KnowledgeEntry(Base):
+    __tablename__ = "knowledge_entries"
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    category: Mapped[str] = mapped_column(String, index=True, nullable=False)
+    simple_explanation: Mapped[str] = mapped_column(Text, nullable=False)
+    warning_signs_json: Mapped[str] = mapped_column(Text, default="[]")
+    possible_causes_json: Mapped[str] = mapped_column(Text, default="[]")
+    relevant_measurements_json: Mapped[str] = mapped_column(Text, default="[]")
+    safe_inspection_considerations_json: Mapped[str] = mapped_column(Text, default="[]")
+    preventive_recommendations_json: Mapped[str] = mapped_column(Text, default="[]")
+    source_classification: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[str] = mapped_column(String, nullable=False)
+
